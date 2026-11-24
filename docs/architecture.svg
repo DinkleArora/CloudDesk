@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 790" font-family="Segoe UI, Roboto, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <style>
+      .box{rx:12;stroke-width:2}
+      .title{font-size:17px;font-weight:700;fill:#0f172a}
+      .sub{font-size:13px;fill:#475569}
+      .lbl{font-size:12.5px;fill:#334155}
+      .flow{stroke:#475569;stroke-width:2;fill:none;marker-end:url(#arrow)}
+      .direct{stroke:#2563eb;stroke-width:2;fill:none;stroke-dasharray:7 5;marker-end:url(#arrowB)}
+    </style>
+  </defs>
+
+  <rect width="1260" height="790" fill="#ffffff"/>
+  <text x="630" y="40" text-anchor="middle" font-size="24" font-weight="700" fill="#0f172a">CloudDesk — System Architecture</text>
+  <text x="630" y="64" text-anchor="middle" class="sub">Fully serverless on AWS (region ap-south-1, Mumbai)</text>
+
+  <!-- User / browser -->
+  <rect x="30" y="300" width="220" height="120" class="box" fill="#eef2ff" stroke="#4f46e5"/>
+  <text x="140" y="342" text-anchor="middle" class="title">User's Browser</text>
+  <text x="140" y="365" text-anchor="middle" class="sub">React.js single-page app</text>
+  <text x="140" y="386" text-anchor="middle" class="sub">(students / team members)</text>
+
+  <g transform="translate(60,0)">
+  <!-- AWS cloud boundary -->
+  <rect x="300" y="90" width="880" height="600" rx="16" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="320" y="116" font-size="15" font-weight="700" fill="#475569">AWS Cloud</text>
+
+  <!-- Amplify Hosting -->
+  <rect x="340" y="140" width="230" height="100" class="box" fill="#fff7ed" stroke="#ea580c"/>
+  <text x="455" y="178" text-anchor="middle" class="title">AWS Amplify Hosting</text>
+  <text x="455" y="200" text-anchor="middle" class="sub">Serves the React build (CDN)</text>
+  <text x="455" y="220" text-anchor="middle" class="sub">CI/CD from GitHub</text>
+
+  <!-- Cognito -->
+  <rect x="340" y="550" width="230" height="100" class="box" fill="#fef2f2" stroke="#dc2626"/>
+  <text x="455" y="588" text-anchor="middle" class="title">Amazon Cognito</text>
+  <text x="455" y="610" text-anchor="middle" class="sub">User pool: sign-up, login,</text>
+  <text x="455" y="630" text-anchor="middle" class="sub">email verification, JWTs</text>
+
+  <!-- API Gateway -->
+  <rect x="340" y="320" width="230" height="110" class="box" fill="#f5f3ff" stroke="#7c3aed"/>
+  <text x="455" y="358" text-anchor="middle" class="title">Amazon API Gateway</text>
+  <text x="455" y="380" text-anchor="middle" class="sub">HTTP API · REST endpoints</text>
+  <text x="455" y="400" text-anchor="middle" class="sub">Cognito JWT authorizer · CORS</text>
+
+  <!-- Lambda group -->
+  <rect x="640" y="250" width="240" height="250" class="box" fill="#fffbeb" stroke="#d97706"/>
+  <text x="760" y="282" text-anchor="middle" class="title">AWS Lambda (Node.js)</text>
+  <rect x="665" y="300" width="190" height="38" rx="8" fill="#fff" stroke="#f59e0b"/>
+  <text x="760" y="324" text-anchor="middle" class="lbl">users — profile sync</text>
+  <rect x="665" y="346" width="190" height="38" rx="8" fill="#fff" stroke="#f59e0b"/>
+  <text x="760" y="370" text-anchor="middle" class="lbl">projects — projects &amp; members</text>
+  <rect x="665" y="392" width="190" height="38" rx="8" fill="#fff" stroke="#f59e0b"/>
+  <text x="760" y="416" text-anchor="middle" class="lbl">tasks — Kanban task CRUD</text>
+  <rect x="665" y="438" width="190" height="38" rx="8" fill="#fff" stroke="#f59e0b"/>
+  <text x="760" y="462" text-anchor="middle" class="lbl">files — presigned S3 URLs</text>
+
+  <!-- DynamoDB -->
+  <rect x="950" y="150" width="210" height="230" class="box" fill="#eff6ff" stroke="#2563eb"/>
+  <text x="1055" y="184" text-anchor="middle" class="title">Amazon DynamoDB</text>
+  <text x="1055" y="206" text-anchor="middle" class="sub">On-demand tables</text>
+  <text x="975" y="238" class="lbl">• Users (EmailIndex)</text>
+  <text x="975" y="262" class="lbl">• Projects</text>
+  <text x="975" y="286" class="lbl">• Members (UserProjectsIndex)</text>
+  <text x="975" y="310" class="lbl">• Tasks</text>
+  <text x="975" y="334" class="lbl">• Files (metadata)</text>
+
+  <!-- S3 -->
+  <rect x="950" y="430" width="210" height="110" class="box" fill="#ecfdf5" stroke="#059669"/>
+  <text x="1055" y="468" text-anchor="middle" class="title">Amazon S3</text>
+  <text x="1055" y="490" text-anchor="middle" class="sub">Private bucket, encrypted</text>
+  <text x="1055" y="510" text-anchor="middle" class="sub">Project file storage</text>
+
+  <!-- CloudWatch -->
+  <rect x="640" y="570" width="240" height="80" class="box" fill="#f1f5f9" stroke="#64748b"/>
+  <text x="760" y="604" text-anchor="middle" class="title">Amazon CloudWatch</text>
+  <text x="760" y="626" text-anchor="middle" class="sub">Lambda logs, metrics, X-Ray traces</text>
+
+  <path d="M455,550 L455,430" class="flow" stroke-dasharray="4 4"/>
+  <text x="462" y="495" class="lbl">verifies token</text>
+  <path d="M570,375 L640,375" class="flow"/>
+  <text x="575" y="365" class="lbl">invoke</text>
+  <path d="M880,320 C915,300 920,270 950,265" class="flow"/>
+  <text x="884" y="262" class="lbl">read/write</text>
+  <path d="M880,455 L950,470" class="flow"/>
+  <text x="882" y="448" class="lbl">sign URL</text>
+  <path d="M760,500 L760,570" class="flow"/>
+  <text x="768" y="540" class="lbl">logs</text>
+  </g>
+  <!-- Browser to AWS flows -->
+  <path d="M250,320 C320,280 340,200 400,190" class="flow"/>
+  <text x="160" y="288" class="lbl">1. Load app</text>
+  <path d="M250,360 L400,372" class="flow"/>
+  <text x="262" y="352" class="lbl">3. API call</text>
+  <text x="262" y="388" class="lbl">+ Bearer JWT</text>
+  <path d="M250,400 C330,450 330,590 400,600" class="flow"/>
+  <text x="152" y="462" class="lbl">2. Sign up / log in</text>
+  <text x="152" y="480" class="lbl">→ receives JWT</text>
+  <!-- Direct browser to S3 -->
+  <path d="M140,420 L140,722 Q140,735 153,735 L1102,735 Q1115,735 1115,722 L1115,540" class="direct"/>
+  <text x="630" y="765" text-anchor="middle" font-size="13.5" font-weight="600" fill="#2563eb">4. File upload / download goes directly between the browser and S3 using a 5-minute presigned URL</text>
+</svg>

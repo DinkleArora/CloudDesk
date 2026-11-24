@@ -1,0 +1,401 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  CloudDesk - Bringing Teams, Tasks, and Ideas Together.
+  Serverless team collaboration platform: Cognito + API Gateway (HTTP API) + Lambda + DynamoDB + S3.
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    Description: Deployment stage name (used in resource names and the API URL)
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures:
+      - arm64
+    MemorySize: 256
+    Timeout: 15
+    CodeUri: src/
+    Tracing: Active
+    Environment:
+      Variables:
+        USERS_TABLE: !Ref UsersTable
+        PROJECTS_TABLE: !Ref ProjectsTable
+        MEMBERS_TABLE: !Ref MembersTable
+        TASKS_TABLE: !Ref TasksTable
+        FILES_TABLE: !Ref FilesTable
+        FILES_BUCKET: !Ref FilesBucket
+        MAX_FILE_SIZE_MB: '25'
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # Authentication - Amazon Cognito
+  # ---------------------------------------------------------------------------
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub clouddesk-${Stage}-users
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireUppercase: false
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub clouddesk-${Stage}-web
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  # ---------------------------------------------------------------------------
+  # API - Amazon API Gateway (HTTP API) with Cognito JWT authorizer
+  # ---------------------------------------------------------------------------
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+          - DELETE
+          - OPTIONS
+        MaxAge: 600
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+              audience:
+                - !Ref UserPoolClient
+
+  # ---------------------------------------------------------------------------
+  # Storage - Amazon S3 (project files, private, accessed via presigned URLs)
+  # ---------------------------------------------------------------------------
+  FilesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - HEAD
+            AllowedHeaders:
+              - '*'
+            ExposedHeaders:
+              - ETag
+            MaxAge: 3000
+
+  # ---------------------------------------------------------------------------
+  # Database - Amazon DynamoDB (on-demand capacity)
+  # ---------------------------------------------------------------------------
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub clouddesk-${Stage}-users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: EmailIndex
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  ProjectsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub clouddesk-${Stage}-projects
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: projectId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: projectId
+          KeyType: HASH
+
+  MembersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub clouddesk-${Stage}-members
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: projectId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: projectId
+          KeyType: HASH
+        - AttributeName: userId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: UserProjectsIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: projectId
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  TasksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub clouddesk-${Stage}-tasks
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: projectId
+          AttributeType: S
+        - AttributeName: taskId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: projectId
+          KeyType: HASH
+        - AttributeName: taskId
+          KeyType: RANGE
+
+  FilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub clouddesk-${Stage}-files
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: projectId
+          AttributeType: S
+        - AttributeName: fileId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: projectId
+          KeyType: HASH
+        - AttributeName: fileId
+          KeyType: RANGE
+
+  # ---------------------------------------------------------------------------
+  # Compute - AWS Lambda functions (one per resource)
+  # ---------------------------------------------------------------------------
+  UsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub clouddesk-${Stage}-users
+      Handler: handlers/users.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        UpsertMe:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /me
+            Method: POST
+
+  ProjectsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub clouddesk-${Stage}-projects
+      Handler: handlers/projects.handler
+      Timeout: 30
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProjectsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MembersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasksTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FilesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+        - S3CrudPolicy:
+            BucketName: !Ref FilesBucket
+      Events:
+        ListProjects:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects
+            Method: GET
+        CreateProject:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects
+            Method: POST
+        GetProject:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}
+            Method: GET
+        UpdateProject:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}
+            Method: PATCH
+        DeleteProject:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}
+            Method: DELETE
+        AddMember:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/members
+            Method: POST
+        RemoveMember:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/members/{userId}
+            Method: DELETE
+
+  TasksFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub clouddesk-${Stage}-tasks
+      Handler: handlers/tasks.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasksTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MembersTable
+      Events:
+        ListTasks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/tasks
+            Method: GET
+        CreateTask:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/tasks
+            Method: POST
+        UpdateTask:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/tasks/{taskId}
+            Method: PATCH
+        DeleteTask:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/tasks/{taskId}
+            Method: DELETE
+
+  FilesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub clouddesk-${Stage}-files
+      Handler: handlers/files.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FilesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref MembersTable
+        - S3CrudPolicy:
+            BucketName: !Ref FilesBucket
+      Events:
+        ListFiles:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/files
+            Method: GET
+        GetUploadUrl:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/files/upload-url
+            Method: POST
+        ConfirmUpload:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/files
+            Method: POST
+        GetDownloadUrl:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/files/{fileId}/download-url
+            Method: GET
+        DeleteFile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{projectId}/files/{fileId}
+            Method: DELETE
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the CloudDesk API (VITE_API_URL)
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}
+  UserPoolId:
+    Description: Cognito User Pool ID (VITE_USER_POOL_ID)
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito App Client ID (VITE_USER_POOL_CLIENT_ID)
+    Value: !Ref UserPoolClient
+  Region:
+    Description: AWS region (VITE_AWS_REGION)
+    Value: !Ref AWS::Region
+  FilesBucketName:
+    Description: S3 bucket that stores project files
+    Value: !Ref FilesBucket
